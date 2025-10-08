@@ -3,7 +3,7 @@ name = "paymob_integration"
 authors = [
     { name = "Sarmad", email = "sarmad@finalytics.tech"}
 ]
-description = "Paymob integration"
+description = "Paymob KSA integration with ERPNext"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]

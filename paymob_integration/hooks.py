@@ -1,7 +1,7 @@
 app_name = "paymob_integration"
 app_title = "Paymob Integration"
 app_publisher = "Sarmad"
-app_description = "Paymob integration"
+app_description = "Paymob KSA integration with ERPNext"
 app_email = "sarmad@finalytics.tech"
 app_license = "mit"
 

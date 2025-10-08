@@ -1,6 +1,6 @@
 ### Paymob Integration
 
-Paymob integration
+Paymob KSA integration with ERPNext
 
 ### Installation
 
