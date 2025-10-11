@@ -1,0 +1,74 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-10-08 18:09:44.944081",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "hmac",
+  "api_key",
+  "secret_key",
+  "public_key",
+  "integration_id",
+  "auto_create_payment_link"
+ ],
+ "fields": [
+  {
+   "fieldname": "hmac",
+   "fieldtype": "Data",
+   "label": "HMAC"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Small Text",
+   "label": "API Key"
+  },
+  {
+   "fieldname": "secret_key",
+   "fieldtype": "Data",
+   "label": "Secret Key"
+  },
+  {
+   "fieldname": "public_key",
+   "fieldtype": "Data",
+   "label": "Public Key"
+  },
+  {
+   "fieldname": "integration_id",
+   "fieldtype": "Int",
+   "label": "Integration ID",
+   "description": "Paymob Integration ID used for iframe and payment keys"
+  },
+  {
+   "fieldname": "auto_create_payment_link",
+   "fieldtype": "Check",
+   "label": "Auto Create Payment Link",
+   "description": "Automatically create and send payment link when Sales Order is submitted"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-10-08 18:10:53.022941",
+ "modified_by": "Administrator",
+ "module": "Paymob Integration",
+ "name": "Paymob Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
