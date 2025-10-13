@@ -252,6 +252,51 @@ class PaymobAPI:
             frappe.log_error(f"Generate Payment Link Error: {str(e)}", "Paymob API Error")
             frappe.throw(_("Failed to generate payment link. Please try again."))
     
+    def send_whatsapp_message(self, phone_number, message):
+        """Send WhatsApp message using WAHA API"""
+        try:
+            settings = frappe.get_single("Paymob Settings")
+            
+            if not getattr(settings, 'enable_whatsapp_notifications', False):
+                frappe.log_error("WhatsApp notifications are disabled", "WhatsApp Disabled")
+                return False
+            
+            waha_url = getattr(settings, 'waha_api_url', 'http://localhost:3000')
+            session_name = getattr(settings, 'whatsapp_session_name', 'default')
+            
+            # Clean phone number (remove + and spaces, ensure it starts with country code)
+            clean_phone = phone_number.replace('+', '').replace(' ', '').replace('-', '')
+            
+            # If phone doesn't start with country code, assume Saudi Arabia (+966)
+            if not clean_phone.startswith('966'):
+                clean_phone = '966' + clean_phone.lstrip('0')
+            
+            # WAHA API endpoint for sending messages
+            api_url = f"{waha_url}/api/sendText"
+            
+            payload = {
+                "chatId": f"{clean_phone}@c.us",
+                "text": message,
+                "session": session_name
+            }
+            
+            headers = {
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+            
+            if response.status_code in [200, 201]:
+                frappe.log_error(f"WhatsApp message sent successfully to {phone_number}", "WhatsApp Success")
+                return True
+            else:
+                frappe.log_error(f"WhatsApp API Error: {response.status_code} - {response.text}", "WhatsApp API Error")
+                return False
+                
+        except Exception as e:
+            frappe.log_error(f"WhatsApp Send Error: {str(e)}", "WhatsApp Error")
+            return False
+
     def send_payment_email(self, sales_order, payment_link):
         """Send payment link to customer via email"""
         try:
@@ -639,6 +684,18 @@ def initialize_paymob_integration(doc, method=None):
                 )
                 frappe.msgprint(_("Payment link will be created and sent to customer automatically."))
         
+        # Send WhatsApp message if enabled in settings
+        if hasattr(settings, 'enable_whatsapp_notifications') and settings.enable_whatsapp_notifications:
+            phone_number = doc.contact_mobile or doc.contact_phone
+            if phone_number:
+                frappe.enqueue(
+                    'paymob_integration.paymob_integration.api.send_whatsapp_message',
+                    queue='short',
+                    timeout=300,
+                    sales_order_name=doc.name
+                )
+                frappe.msgprint(_("WhatsApp notification will be sent to customer automatically."))
+        
     except Exception as e:
         frappe.log_error(f"Paymob Integration Init Error: {str(e)}", "Paymob Integration Error")
 
@@ -679,6 +736,47 @@ def send_payment_email(sales_order_name):
         
     except Exception as e:
         frappe.log_error(f"Send Payment Email Error: {str(e)}", "Paymob Email Error")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@frappe.whitelist()
+def send_whatsapp_message(sales_order_name):
+    """API endpoint to send WhatsApp message for Sales Order"""
+    try:
+        sales_order = frappe.get_doc("Sales Order", sales_order_name)
+        
+        if not sales_order:
+            frappe.throw(_("Sales Order not found"))
+        
+        # Get customer phone number
+        phone_number = sales_order.contact_mobile or sales_order.contact_phone
+        
+        if not phone_number:
+            frappe.throw(_("Customer phone number not found. Please add phone number to contact."))
+        
+        message = f"Thank you for your order with Sage Services! Order: {sales_order.name}"
+        
+        # Initialize Paymob API
+        paymob_api = PaymobAPI()
+        
+        # Send WhatsApp message
+        success = paymob_api.send_whatsapp_message(phone_number, message)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": "WhatsApp message sent successfully!"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to send WhatsApp message. Please check WAHA configuration."
+            }
+        
+    except Exception as e:
+        frappe.log_error(f"Send WhatsApp Message Error: {str(e)}", "WhatsApp Error")
         return {
             "status": "error",
             "message": str(e)

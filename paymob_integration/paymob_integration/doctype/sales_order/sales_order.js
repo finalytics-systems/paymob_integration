@@ -40,6 +40,13 @@ function add_paymob_buttons(frm) {
         }, __('Paymob'));
     }
     
+    // Add Send WhatsApp Message button
+    if (frm.doc.contact_mobile || frm.doc.contact_phone) {
+        frm.add_custom_button(__('Send WhatsApp Message'), function() {
+            send_whatsapp_message(frm);
+        }, __('Paymob'));
+    }
+    
     // Add Check Payment Status button
     frm.add_custom_button(__('Check Payment Status'), function() {
         check_payment_status(frm);
@@ -125,6 +132,35 @@ function send_payment_email(frm) {
                         frappe.msgprint({
                             title: __('Success'),
                             message: __('Payment email sent to customer successfully!'),
+                            indicator: 'green'
+                        });
+                    } else {
+                        frappe.msgprint({
+                            title: __('Error'),
+                            message: r.message.message,
+                            indicator: 'red'
+                        });
+                    }
+                }
+            });
+        }
+    );
+}
+
+function send_whatsapp_message(frm) {
+    frappe.confirm(
+        __('Are you sure you want to send a WhatsApp message to the customer?'),
+        function() {
+            frappe.call({
+                method: 'paymob_integration.paymob_integration.api.send_whatsapp_message',
+                args: {
+                    sales_order_name: frm.doc.name
+                },
+                callback: function(r) {
+                    if (r.message.status === 'success') {
+                        frappe.msgprint({
+                            title: __('Success'),
+                            message: __('WhatsApp message sent to customer successfully!'),
                             indicator: 'green'
                         });
                     } else {

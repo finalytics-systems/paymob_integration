@@ -10,7 +10,11 @@
   "secret_key",
   "public_key",
   "integration_id",
-  "auto_create_payment_link"
+  "auto_create_payment_link",
+  "whatsapp_section",
+  "waha_api_url",
+  "whatsapp_session_name",
+  "enable_whatsapp_notifications"
  ],
  "fields": [
   {
@@ -44,6 +48,31 @@
    "fieldtype": "Check",
    "label": "Auto Create Payment Link",
    "description": "Automatically create and send payment link when Sales Order is submitted"
+  },
+  {
+   "fieldname": "whatsapp_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Integration"
+  },
+  {
+   "fieldname": "waha_api_url",
+   "fieldtype": "Data",
+   "label": "WAHA API URL",
+   "default": "http://localhost:3000",
+   "description": "WAHA (WhatsApp HTTP API) server URL"
+  },
+  {
+   "fieldname": "whatsapp_session_name",
+   "fieldtype": "Data",
+   "label": "WhatsApp Session Name",
+   "default": "default",
+   "description": "WhatsApp session name configured in WAHA"
+  },
+  {
+   "fieldname": "enable_whatsapp_notifications",
+   "fieldtype": "Check",
+   "label": "Enable WhatsApp Notifications",
+   "description": "Send WhatsApp messages when Sales Orders are submitted"
   }
  ],
  "grid_page_length": 50,
