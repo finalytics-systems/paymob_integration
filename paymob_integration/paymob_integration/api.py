@@ -781,3 +781,317 @@ def send_whatsapp_message(sales_order_name):
             "status": "error",
             "message": str(e)
         }
+
+
+
+# app/module/api/paymob.py  (for example)
+import requests
+import frappe
+from frappe import _
+from frappe.utils import cint
+
+PAYMOB_BASE_URL = "https://ksa.paymob.com"  # KSA environment
+
+def _post(url: str, json: dict, timeout=20):
+    try:
+        resp = requests.post(url, json=json, timeout=timeout)
+        # Paymob returns JSON even on many errors; raise for non-2xx
+        if not (200 <= resp.status_code < 300):
+            try:
+                details = resp.json()
+            except Exception:
+                details = resp.text
+            frappe.throw(_("Paymob API error at {0}: HTTP {1} - {2}")
+                         .format(url, resp.status_code, details))
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        frappe.throw(_("Network error calling Paymob: {0}").format(e))
+
+def _get_settings():
+    try:
+        return frappe.get_single("Paymob Settings")
+    except Exception:
+        frappe.throw(_("Please create a singleton doctype named 'Paymob Settings' "
+                       "with api_key, secret_key, public_key, integration_id, iframe_id."))
+
+def _prepare_billing_data(so):
+    # Paymob requires all these keys. Use best-effort data from the SO; fall back to safe defaults.
+    email = getattr(so, "contact_email", None) or frappe.db.get_value("Contact", {"name": so.contact_person}, "email_id") or "customer@example.com"
+    phone = getattr(so, "contact_phone", None) or frappe.db.get_value("Contact", {"name": so.contact_person}, "phone") or "+966500000000"
+    first_name = (so.customer_name or "Customer").split(" ")[0][:50]
+    last_name = "Customer"
+    city = getattr(so, "shipping_address_name", None) and (frappe.db.get_value("Address", so.shipping_address_name, "city") or "Riyadh") or "Riyadh"
+    state = "Riyadh"
+    postal_code = getattr(so, "shipping_address_name", None) and (frappe.db.get_value("Address", so.shipping_address_name, "pincode") or "11564") or "11564"
+    street = getattr(so, "shipping_address_name", None) and (frappe.db.get_value("Address", so.shipping_address_name, "address_line1") or "King Fahd Rd") or "King Fahd Rd"
+    country_code = frappe.db.get_value("Address", so.shipping_address_name, "country") if getattr(so, "shipping_address_name", None) else "SA"
+    if country_code == "Saudi Arabia":
+        country_code = "SA"
+
+    return {
+        "apartment": "NA",
+        "email": email,
+        "floor": "NA",
+        "first_name": first_name,
+        "street": street or "King Fahd Rd",
+        "building": "10",
+        "phone_number": phone,
+        "shipping_method": "PKG",
+        "postal_code": postal_code or "11564",
+        "city": city or "Riyadh",
+        "country": country_code or "SA",
+        "last_name": last_name,
+        "state": state or "Riyadh"
+    }
+
+@frappe.whitelist()
+def create_payment_link_v1(sales_order_name: str):
+    """
+    Creates a Paymob hosted payment link for a Sales Order and saves it in
+    Sales Order.custom_paymob_payment_link. Returns a dict with useful info.
+
+    Flow:
+      Step 1 - Authenticate (get AUTH_TOKEN)
+      Step 2 - Create Order (get Paymob ORDER_ID)
+      Step 3 - Create Payment Key (get PAYMENT_KEY)
+      Step 4 - Build iframe URL and save to Sales Order
+    """
+    # --- Load docs & settings
+    so = frappe.get_doc("Sales Order", sales_order_name)
+    settings = _get_settings()
+
+    # Basic validation
+    missing = []
+    for f in ("api_key", "integration_id", "iframe_id"):
+        if not getattr(settings, f, None):
+            missing.append(f)
+    if missing:
+        frappe.throw(_("Missing in Paymob Settings: {0}").format(", ".join(missing)))
+
+    # Amount & currency
+    # Paymob expects integer "amount_cents"
+    if so.grand_total is None:
+        frappe.throw(_("Sales Order has no grand total."))
+    amount_cents = cint(round(float(so.grand_total) * 100))
+    if amount_cents <= 0:
+        frappe.throw(_("Amount must be > 0 to create a payment link."))
+
+    # currency = so.currency or "SAR"
+    currency = "SAR"
+
+    # -----------------------
+    # Step 1: AUTHENTICATE
+    # -----------------------
+    auth_url = f"{PAYMOB_BASE_URL}/api/auth/tokens"
+    auth_payload = {"api_key": settings.api_key}
+    auth_res = _post(auth_url, auth_payload)
+    auth_token = auth_res.get("token")
+    if not auth_token:
+        frappe.throw(_("Paymob did not return an auth token."))
+
+    # -----------------------
+    # Step 2: CREATE ORDER
+    # -----------------------
+    order_url = f"{PAYMOB_BASE_URL}/api/ecommerce/orders"
+    order_payload = {
+        "auth_token": auth_token,
+        "delivery_needed": False,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "merchant_order_id": so.name,
+        "items": []
+    }
+    order_res = _post(order_url, order_payload)
+    paymob_order_id = order_res.get("id")
+    if not paymob_order_id:
+        frappe.throw(_("Paymob did not return an order id."))
+
+    # -----------------------
+    # Step 3: PAYMENT KEY
+    # -----------------------
+    payment_key_url = f"{PAYMOB_BASE_URL}/api/acceptance/payment_keys"
+    billing_data = _prepare_billing_data(so)
+    payment_key_payload = {
+        "auth_token": auth_token,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "order_id": paymob_order_id,
+        "integration_id": cint(settings.integration_id),
+        "expiration": 3600,
+        "billing_data": billing_data
+    }
+    payment_key_res = _post(payment_key_url, payment_key_payload)
+    payment_token = payment_key_res.get("token")
+    if not payment_token:
+        frappe.throw(_("Paymob did not return a payment token."))
+
+    # -----------------------
+    # Step 4: BUILD URL & SAVE
+    # -----------------------
+    iframe_id = cint(settings.iframe_id)
+    pay_link = f"{PAYMOB_BASE_URL}/api/acceptance/iframes/{iframe_id}?payment_token={payment_token}"
+
+    # Save to custom field on Sales Order
+    so.db_set("paymob_payment_link", pay_link)
+    so.add_comment("Info", _("Paymob payment link generated and saved."))
+    so.reload()
+
+    return {
+        "success": True,
+        "sales_order": so.name,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "paymob_order_id": paymob_order_id,
+        "payment_token": payment_token,
+        "payment_url": pay_link
+    }
+
+
+# your_app/your_module/api/paymob.py
+
+import json
+import requests
+import frappe
+from frappe import _
+from frappe.utils import nowdate
+from frappe.utils.data import flt, cint
+
+from erpnext.accounts.party import get_party_account
+from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+PAYMOB_BASE_URL = "https://ksa.paymob.com"
+
+def _post(url: str, json_payload: dict, timeout=20):
+    """Small wrapper that returns JSON or throws a friendly ERPNext error."""
+    try:
+        resp = requests.post(url, json=json_payload, timeout=timeout)
+        if not (200 <= resp.status_code < 300):
+            try:
+                details = resp.json()
+            except Exception:
+                details = resp.text
+            frappe.throw(_("Paymob API error at {0}: HTTP {1} - {2}")
+                         .format(url, resp.status_code, details))
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        frappe.throw(_("Network error calling Paymob: {0}").format(e))
+
+def _get_settings():
+    try:
+        return frappe.get_single("Paymob Settings")
+    except Exception:
+        frappe.throw(_("Please create the singleton 'Paymob Settings' with api_key, secret_key, public_key, integration_id, iframe_id."))
+
+@frappe.whitelist()
+def inquire_and_create_payment_entry(sales_order_name: str):
+    """
+    Button action:
+      - Calls Paymob /api/ecommerce/orders/transaction_inquiry with merchant_order_id = Sales Order name
+      - If res['pending'] == False and res['success'] == True -> create & submit Payment Entry
+      - Else throw "No successful transaction found"
+    """
+    so = frappe.get_doc("Sales Order", sales_order_name)
+    settings = _get_settings()
+
+    # Step 1: Authenticate
+    auth_token = _get_auth_token(settings)
+
+    # Step 2: Inquiry request
+    inquiry_url = f"{PAYMOB_BASE_URL}/api/ecommerce/orders/transaction_inquiry"
+    payload = {"auth_token": auth_token, "merchant_order_id": so.name}
+    res = _post(inquiry_url, payload)
+
+    # Step 3: Validate transaction success
+    pending = res.get("pending")
+    success = res.get("success")
+
+    if pending is False and success is True:
+        # ✅ Transaction successful
+        amount = (
+            flt(res.get("amount_cents")) / 100
+        )
+        currency = res.get("currency") or so.currency or "SAR"
+        amount = float(amount)
+
+        # Avoid duplicate Payment Entries
+        existing = frappe.get_all(
+            "Payment Entry Reference",
+            filters={
+                "reference_doctype": "Sales Order",
+                "reference_name": so.name,
+                "docstatus": 1,
+            },
+            fields=["parent"],
+            limit=1,
+        )
+        if existing:
+            return {
+                "success": True,
+                "status": "ALREADY_PAID",
+                "payment_entry": existing[0]["parent"],
+                "transaction": res,
+            }
+
+        # Create and submit new Payment Entry
+        pe = get_payment_entry("Sales Order", so.name)
+        pe.paid_amount = amount
+        pe.received_amount = amount
+        pe.reference_no = str(res.get("transaction_no") or res.get("receipt_no") or "Paymob")
+        pe.reference_date = nowdate()
+
+        if not pe.paid_to:
+            default_bank = frappe.get_cached_value("Company", so.company, "default_bank_account")
+            if not default_bank:
+                frappe.throw(_("Please set a Default Bank Account in Company master or set Paid To manually."))
+            pe.paid_to = default_bank
+
+        pe.insert(ignore_permissions=True)
+        pe.submit()
+
+        # Mark Sales Order
+        try:
+            so.db_set("custom_paymob_status", "Paid")
+        except Exception:
+            pass
+
+        so.add_comment(
+            "Info",
+            _("💳 Paymob payment successful. Amount: {0} {1}. Payment Entry: {2}")
+            .format(f"{amount:.2f}", currency, pe.name),
+        )
+
+        return {
+            "success": True,
+            "status": "PAID",
+            "payment_entry": pe.name,
+            "amount": amount,
+            "currency": currency,
+            "transaction": res,
+        }
+
+    # ❌ Not successful
+    frappe.throw(_("No successful Paymob transaction found (pending={0}, success={1}).").format(pending, success))
+
+
+def _get_auth_token(settings):
+    """
+    Obtain a fresh Paymob authentication token.
+    Returns: auth_token (str)
+    """
+    url = f"{PAYMOB_BASE_URL}/api/auth/tokens"
+    payload = {"api_key": settings.api_key}
+    try:
+        resp = requests.post(url, json=payload, timeout=20)
+        if resp.status_code != 201 and resp.status_code != 200:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text
+            frappe.throw(_("Paymob auth failed: {0}").format(detail))
+        data = resp.json()
+        token = data.get("token")
+        if not token:
+            frappe.throw(_("Paymob auth response did not include a token."))
+        return token
+    except requests.exceptions.RequestException as e:
+        frappe.throw(_("Error connecting to Paymob Auth API: {0}").format(e))

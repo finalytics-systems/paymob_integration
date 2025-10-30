@@ -10,6 +10,7 @@
   "secret_key",
   "public_key",
   "integration_id",
+  "iframe_id",
   "auto_create_payment_link",
   "whatsapp_section",
   "waha_api_url",
@@ -38,16 +39,17 @@
    "label": "Public Key"
   },
   {
+   "description": "Paymob Integration ID used for iframe and payment keys",
    "fieldname": "integration_id",
    "fieldtype": "Int",
-   "label": "Integration ID",
-   "description": "Paymob Integration ID used for iframe and payment keys"
+   "label": "Integration ID"
   },
   {
+   "default": "0",
+   "description": "Automatically create and send payment link when Sales Order is submitted",
    "fieldname": "auto_create_payment_link",
    "fieldtype": "Check",
-   "label": "Auto Create Payment Link",
-   "description": "Automatically create and send payment link when Sales Order is submitted"
+   "label": "Auto Create Payment Link"
   },
   {
    "fieldname": "whatsapp_section",
@@ -55,31 +57,37 @@
    "label": "WhatsApp Integration"
   },
   {
+   "default": "http://localhost:3000",
+   "description": "WAHA (WhatsApp HTTP API) server URL",
    "fieldname": "waha_api_url",
    "fieldtype": "Data",
-   "label": "WAHA API URL",
-   "default": "http://localhost:3000",
-   "description": "WAHA (WhatsApp HTTP API) server URL"
+   "label": "WAHA API URL"
   },
   {
+   "default": "default",
+   "description": "WhatsApp session name configured in WAHA",
    "fieldname": "whatsapp_session_name",
    "fieldtype": "Data",
-   "label": "WhatsApp Session Name",
-   "default": "default",
-   "description": "WhatsApp session name configured in WAHA"
+   "label": "WhatsApp Session Name"
   },
   {
+   "default": "0",
+   "description": "Send WhatsApp messages when Sales Orders are submitted",
    "fieldname": "enable_whatsapp_notifications",
    "fieldtype": "Check",
-   "label": "Enable WhatsApp Notifications",
-   "description": "Send WhatsApp messages when Sales Orders are submitted"
+   "label": "Enable WhatsApp Notifications"
+  },
+  {
+   "fieldname": "iframe_id",
+   "fieldtype": "Int",
+   "label": "iFrame ID"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-10-08 18:10:53.022941",
+ "modified": "2025-10-30 21:04:55.961989",
  "modified_by": "Administrator",
  "module": "Paymob Integration",
  "name": "Paymob Settings",
