@@ -933,6 +933,7 @@ def create_payment_link_v1(sales_order_name: str):
 
     # Save to custom field on Sales Order
     so.db_set("paymob_payment_link", pay_link)
+    so.db_set("paymob_order_id", paymob_order_id)
     so.add_comment("Info", _("Paymob payment link generated and saved."))
     so.reload()
 
@@ -998,7 +999,7 @@ def inquire_and_create_payment_entry(sales_order_name: str):
 
     # Step 2: Inquiry request
     inquiry_url = f"{PAYMOB_BASE_URL}/api/ecommerce/orders/transaction_inquiry"
-    payload = {"auth_token": auth_token, "merchant_order_id": so.name}
+    payload = {"auth_token": auth_token, "order_id": so.paymob_order_id}
     res = _post(inquiry_url, payload)
 
     # Step 3: Validate transaction success
