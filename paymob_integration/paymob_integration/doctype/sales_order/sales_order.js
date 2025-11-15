@@ -65,7 +65,7 @@ function create_payment_link(frm) {
         __('Are you sure you want to create a payment link for this Sales Order?'),
         function () {
             frappe.call({
-                method: 'paymob_integration.paymob_integration.api.create_payment_link_v1',
+                method: 'paymob_integration.paymob_integration.api.create_payment_link_v2',
                 args: {
                     sales_order_name: frm.doc.name
                 },
